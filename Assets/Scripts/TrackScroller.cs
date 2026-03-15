@@ -1,15 +1,16 @@
 using UnityEngine;
 
-// Attach this to your HalfPipe object and any parent objects in the scene
-// Everything with this script scrolls toward the player automatically
+// Moves the track toward the player each frame.
+// Physics.SyncTransforms() keeps the MeshCollider position current so raycasts
+// in PlayerController always hit the correct surface location.
 public class TrackScroller : MonoBehaviour
 {
     [Header("Scroll Settings")]
-    public float scrollSpeed = 18f;    // Medium speed
+    public float scrollSpeed = 18f;
 
-    void FixedUpdate()
+    void Update()
     {
-        // Move everything toward the player (negative Z)
         transform.Translate(Vector3.back * scrollSpeed * Time.deltaTime, Space.World);
+        Physics.SyncTransforms();
     }
 }

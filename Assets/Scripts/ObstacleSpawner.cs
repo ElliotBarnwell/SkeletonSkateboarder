@@ -6,23 +6,30 @@ public class ObstacleSpawner : MonoBehaviour
     public GameObject[] obstaclePrefabs;
 
     [Header("Spawn Settings")]
-    public float spawnInterval  = 3f;      // Seconds between patterns
-    public float spawnAheadZ    = 60f;     // How far ahead to spawn
-    public float despawnZ       = -20f;    // Destroy when past this Z
+    public float spawnInterval = 3f;
+    public float spawnAheadZ  = 60f;
 
-    [Header("Track Settings")]
-    public float trackWidth     = 3f;      // Left/right spread of obstacles
-    public float heightAbove    = 0.5f;    // How high above track surface to place
+    [Header("Flat Bottom Slots")]
+    public float flatBottomWidth = 10f;  // Match to HalfPipeExtruder.flatBottomWidth
+    public float heightAbove     = 0.5f;
+    public int   maxBlockedSlots = 3;    // 1-3 — always leaves at least 1 open out of 4
+
+    [Header("Wall Slots")]
+    public bool  spawnOnWalls    = true;
+    public float wallSlotX       = 8f;    // Inner wall lane X — must be > flatBottomWidth/2
+    public float wallSlotX2      = 10f;   // Outer wall lane X — further up the curve
+    public int   wallSlotsToBlock = 1;    // 0–4 wall slots blocked per wave
 
     [Header("Raycast")]
-    public float raycastFromY   = 20f;     // Cast from this height down to find track
-    public LayerMask trackLayer;           // Set to your track layer
+    public float raycastFromY = 60f;
+    public LayerMask trackLayer;
 
     private float     timer = 0f;
     private Transform playerTransform;
     private float     trackScrollSpeed;
 
-    enum Pattern { FullRow, GapLeft, GapMiddle, GapRight, Zigzag }
+    private const int FLAT_SLOT_COUNT = 4;
+    private const int WALL_SLOT_COUNT = 4;  // inner-left, outer-left, inner-right, outer-right
 
     void Start()
     {
@@ -30,7 +37,6 @@ public class ObstacleSpawner : MonoBehaviour
         if (player != null)
             playerTransform = player.transform;
 
-        // Get scroll speed from the track scroller
         TrackScroller scroller = FindAnyObjectByType<TrackScroller>();
         if (scroller != null)
             trackScrollSpeed = scroller.scrollSpeed;
@@ -54,43 +60,37 @@ public class ObstacleSpawner : MonoBehaviour
     {
         if (obstaclePrefabs.Length == 0) return;
 
-        Pattern pattern = (Pattern)Random.Range(0, System.Enum.GetValues(typeof(Pattern)).Length);
-        float   spawnZ  = playerTransform.position.z + spawnAheadZ;
+        float spawnZ = playerTransform.position.z + spawnAheadZ;
 
-        switch (pattern)
+        // ── Flat bottom slots ─────────────────────────────────────────────
+        float half = flatBottomWidth * 0.5f;
+        float step = (half * 0.75f * 2f) / (FLAT_SLOT_COUNT - 1);
+        float[] flatSlotX = new float[FLAT_SLOT_COUNT]
         {
-            case Pattern.FullRow:
-                TrySpawnAt(-trackWidth, spawnZ);
-                TrySpawnAt(0f,          spawnZ);
-                TrySpawnAt( trackWidth, spawnZ);
-                break;
+            -half * 0.75f,
+            -half * 0.75f + step,
+             half * 0.75f - step,
+             half * 0.75f
+        };
 
-            case Pattern.GapLeft:
-                TrySpawnAt(0f,          spawnZ);
-                TrySpawnAt( trackWidth, spawnZ);
-                break;
+        int   blocked   = Mathf.Clamp(maxBlockedSlots, 1, FLAT_SLOT_COUNT - 1);
+        int[] flatOrder = ShuffledIndices(FLAT_SLOT_COUNT);
+        for (int i = 0; i < blocked; i++)
+            TrySpawnAt(flatSlotX[flatOrder[i]], spawnZ);
 
-            case Pattern.GapMiddle:
-                TrySpawnAt(-trackWidth, spawnZ);
-                TrySpawnAt( trackWidth, spawnZ);
-                break;
-
-            case Pattern.GapRight:
-                TrySpawnAt(-trackWidth, spawnZ);
-                TrySpawnAt(0f,          spawnZ);
-                break;
-
-            case Pattern.Zigzag:
-                TrySpawnAt(-trackWidth, spawnZ);
-                TrySpawnAt( trackWidth, spawnZ + 5f);
-                TrySpawnAt(-trackWidth, spawnZ + 10f);
-                break;
+        // ── Wall slots ────────────────────────────────────────────────────
+        if (spawnOnWalls && wallSlotsToBlock > 0)
+        {
+            float[] wallPositions = new float[WALL_SLOT_COUNT] { -wallSlotX2, -wallSlotX, wallSlotX, wallSlotX2 };
+            int     wallBlocked   = Mathf.Clamp(wallSlotsToBlock, 1, WALL_SLOT_COUNT);
+            int[]   wallOrder     = ShuffledIndices(WALL_SLOT_COUNT);
+            for (int i = 0; i < wallBlocked; i++)
+                TrySpawnAt(wallPositions[wallOrder[i]], spawnZ);
         }
     }
 
     void TrySpawnAt(float x, float z)
     {
-        // Raycast down from above to find exact track surface Y
         Vector3    rayOrigin = new Vector3(x, raycastFromY, z);
         RaycastHit hit;
 
@@ -98,30 +98,41 @@ public class ObstacleSpawner : MonoBehaviour
             ? Physics.Raycast(rayOrigin, Vector3.down, out hit, raycastFromY * 2f, trackLayer)
             : Physics.Raycast(rayOrigin, Vector3.down, out hit, raycastFromY * 2f);
 
-        if (!foundTrack)
+        if (!foundTrack) return;
+
+        // Align to surface normal so spike stands perpendicular to wall/floor
+        Quaternion rot      = Quaternion.FromToRotation(Vector3.up, hit.normal);
+        Vector3    spawnPos = hit.point + hit.normal * heightAbove;
+
+        GameObject prefab   = obstaclePrefabs[Random.Range(0, obstaclePrefabs.Length)];
+        GameObject obstacle = Instantiate(prefab, spawnPos, rot);
+
+        TrackScroller scroller = obstacle.AddComponent<TrackScroller>();
+        scroller.scrollSpeed   = trackScrollSpeed;
+
+        obstacle.tag   = "Obstacle";
+        obstacle.layer = LayerMask.NameToLayer("Obstacles");
+    }
+
+    int[] ShuffledIndices(int count)
+    {
+        int[] indices = new int[count];
+        for (int i = 0; i < count; i++) indices[i] = i;
+        for (int i = count - 1; i > 0; i--)
         {
-            Debug.Log("No track found at X:" + x + " Z:" + z + " — obstacle skipped");
-            return;
+            int j = Random.Range(0, i + 1);
+            (indices[i], indices[j]) = (indices[j], indices[i]);
         }
-
-        // Place obstacle on track surface
-        Vector3    spawnPos  = new Vector3(x, hit.point.y + heightAbove, z);
-        GameObject prefab    = obstaclePrefabs[Random.Range(0, obstaclePrefabs.Length)];
-        GameObject obstacle  = Instantiate(prefab, spawnPos, Quaternion.identity);
-
-        // Add scroller so it moves with the track
-        TrackScroller scroller    = obstacle.AddComponent<TrackScroller>();
-        scroller.scrollSpeed      = trackScrollSpeed;
-
-        obstacle.tag = "Obstacle";
+        return indices;
     }
 
     void CleanupOldObstacles()
     {
+        float destroyBehind  = playerTransform.position.z - 10f;
         GameObject[] obstacles = GameObject.FindGameObjectsWithTag("Obstacle");
         foreach (GameObject obs in obstacles)
         {
-            if (obs != null && obs.transform.position.z < despawnZ)
+            if (obs != null && obs.transform.position.z < destroyBehind)
                 Destroy(obs);
         }
     }

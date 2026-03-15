@@ -5,68 +5,89 @@ using Unity.Mathematics;
 public class CameraFollow : MonoBehaviour
 {
     [Header("References")]
-    public Transform       player;
-    public SplineContainer splineContainer;
-    public TrackScroller   trackScroller;
+    public PlayerController player;
+    public SplineContainer  splineContainer;
 
     [Header("Offset")]
-    public float behindDistance = 10f;   // Distance behind player along spline direction
-    public float heightOffset   = 3f;    // Height above player along spline up
-    public float pitchAngle     = 10f;   // Extra downward tilt
+    public float behindDistance = 10f;
+    public float heightOffset   = 5f;
+
+    [Header("Rotation")]
+    public float basePitch        = 10f;   // Constant downward tilt (degrees)
+    public float slopePitchAmount = 25f;   // How much slope affects pitch
 
     [Header("Smoothing")]
-    public float rotationSmooth = 5f;
-    public float positionSmooth = 10f;
+    public float positionSmoothTime = 0.1f;
+    public float rotationSmoothTime = 0.15f;
+    public float splineTSmoothTime  = 0.1f;
 
-    private float      splineT      = 0f;
-    private Quaternion targetRot;
-    private Vector3    posVelocity  = Vector3.zero;
-    private float      splineLength = 0f;
+    private Vector3    posVelocity = Vector3.zero;
+    private Quaternion targetRot   = Quaternion.identity;
+    private float      rotVelocity = 0f;
+    private float      splineT     = 0f;
+    private float      splineTVel  = 0f;
 
     void Start()
     {
-        targetRot    = transform.rotation;
-        if (splineContainer != null)
-            splineLength = splineContainer.Spline.GetLength();
+        if (player == null) return;
+        Vector3 startPos   = player.transform.position + new Vector3(0f, heightOffset, -behindDistance);
+        transform.position = startPos;
+        posVelocity        = Vector3.zero;
+        targetRot          = TargetRotation(Vector3.forward);
+        transform.rotation = targetRot;
     }
 
     void LateUpdate()
     {
-        if (player == null || splineContainer == null || trackScroller == null) return;
+        if (player == null || splineContainer == null) return;
 
-        // ── Advance T along spline ────────────────────────────────────────
-        splineT += (trackScroller.scrollSpeed * Time.deltaTime) / splineLength;
-        splineT  = Mathf.Clamp01(splineT);
+        // ── Find spline T nearest to player ───────────────────────────────
+        // Convert player world pos to spline local space (spline container moves).
+        float3 localPos = splineContainer.transform.InverseTransformPoint(player.transform.position);
+        SplineUtility.GetNearestPoint(splineContainer.Spline, localPos, out _, out float rawT, 8, 4);
+        splineT = Mathf.SmoothDamp(splineT, rawT, ref splineTVel, splineTSmoothTime);
 
-        // ── Sample spline direction at current T ──────────────────────────
-        float3  tan      = math.normalizesafe(splineContainer.Spline.EvaluateTangent(splineT));
-        Vector3 forward  = new Vector3(tan.x, tan.y, tan.z);
-
-        // Strip X so no sideways roll — only pitch with ramps
-        forward          = new Vector3(0f, forward.y, forward.z).normalized;
-
-        // Build right and up from forward
-        Vector3 right    = Vector3.Cross(Vector3.up, forward).normalized;
-        Vector3 up       = Vector3.Cross(forward, right).normalized;
-
-        // ── Position camera behind and above player ALONG spline axes ─────
-        // Using spline-relative axes keeps player centred in frame on ramps
-        Vector3 targetPos = player.position
-                          - forward * behindDistance   // Behind along spline direction
-                          + up      * heightOffset;    // Above along spline up
-
-        transform.position = Vector3.SmoothDamp(
-            transform.position,
-            targetPos,
-            ref posVelocity,
-            1f / positionSmooth
+        // ── Sample tangent at smoothed T ──────────────────────────────────
+        // Tangent is in spline local space — transform direction to world space.
+        float3  localTan   = math.normalizesafe(splineContainer.Spline.EvaluateTangent(splineT));
+        Vector3 worldForward = splineContainer.transform.TransformDirection(
+            new Vector3(localTan.x, localTan.y, localTan.z)
         );
 
-        // ── Rotation faces forward along spline + extra pitch ─────────────
-        Quaternion splineRot   = Quaternion.LookRotation(forward, Vector3.up);
-        Quaternion finalRot    = splineRot * Quaternion.Euler(pitchAngle, 0f, 0f);
+        // ── Position: world-space offsets, Y tracks player height ─────────
+        transform.position = Vector3.SmoothDamp(
+            transform.position,
+            TargetPosition(),
+            ref posVelocity,
+            positionSmoothTime
+        );
 
-        targetRot          = Quaternion.Slerp(targetRot, finalRot, rotationSmooth * Time.deltaTime);
+        // ── Rotation: pitch from spline slope ─────────────────────────────
+        Quaternion finalRot    = TargetRotation(worldForward);
+        float      angle       = Quaternion.Angle(targetRot, finalRot);
+        float      smoothAngle = Mathf.SmoothDamp(0f, angle, ref rotVelocity, rotationSmoothTime);
+        targetRot              = angle > 0.001f
+            ? Quaternion.Slerp(targetRot, finalRot, smoothAngle / angle)
+            : finalRot;
         transform.rotation = targetRot;
+    }
+
+    Vector3 TargetPosition()
+    {
+        Transform t = player.transform;
+        return new Vector3(
+            t.position.x,
+            t.position.y + heightOffset,
+            t.position.z - behindDistance
+        );
+    }
+
+    Quaternion TargetRotation(Vector3 splineForward)
+    {
+        // Derive pitch from how much the spline points up or down.
+        // Positive Y in forward = upslope, negative = downslope.
+        float slopeAngle = Mathf.Asin(Mathf.Clamp(splineForward.y, -1f, 1f)) * Mathf.Rad2Deg;
+        float pitch      = basePitch - slopeAngle * (slopePitchAmount / 90f);
+        return Quaternion.Euler(pitch, 0f, 0f);
     }
 }

@@ -116,31 +116,25 @@ public class HalfPipeExtruder : MonoBehaviour
 
         GetComponent<MeshFilter>().mesh = mesh;
 
+        // ── Assign to MeshCollider at runtime ─────────────────────────────
+        MeshCollider col = GetComponent<MeshCollider>();
+        if (col != null)
+        {
+            col.sharedMesh = null;
+            col.sharedMesh = mesh;
+        }
+
 #if UNITY_EDITOR
-        // ── Save mesh as permanent asset so collider can always find it ───
+        // ── Also save mesh as asset for edit-time use ─────────────────────
         string folder = "Assets/Meshes";
         if (!System.IO.Directory.Exists(folder))
             System.IO.Directory.CreateDirectory(folder);
 
         string path = folder + "/FlatBottomHalfPipe.asset";
-
-        // Overwrite if exists
         AssetDatabase.DeleteAsset(path);
-        AssetDatabase.CreateAsset(mesh, path);
+        AssetDatabase.CreateAsset(Instantiate(mesh), path);
         AssetDatabase.SaveAssets();
-
-        // Assign saved mesh to MeshCollider if one exists
-        MeshCollider col = GetComponent<MeshCollider>();
-        if (col != null)
-        {
-            col.sharedMesh = null;
-            col.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-            Debug.Log("Mesh saved to " + path + " and assigned to MeshCollider!");
-        }
-        else
-        {
-            Debug.Log("Mesh saved to " + path + " — Add a MeshCollider and assign it manually.");
-        }
+        Debug.Log("Mesh saved to " + path);
 #endif
     }
 
