@@ -73,7 +73,7 @@ public class PlayerController : MonoBehaviour
         // Move X first so the surface detection reflects the player's actual
         // new position this frame, not last frame's stale transform.position.
         Vector3 pos = transform.position;
-        pos.x += horizontal * lateralSpeed * Time.deltaTime;
+        pos.x = Mathf.Clamp(pos.x + horizontal * lateralSpeed * Time.deltaTime, -lateralBound, lateralBound);
 
         // ── Raycast to find surface ───────────────────────────────────────
         // The wall curves from flat (normal=up) to nearly vertical at the lip.

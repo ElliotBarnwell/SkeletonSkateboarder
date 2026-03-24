@@ -3285,12 +3285,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraFollow
   player: {fileID: 570279043}
-  collisionMask:
-    serializedVersion: 2
-    m_Bits: 8
-  behindDistance: 10
-  heightOffset: 3
-  collisionRadius: 0.3
+  behindDistance: 15
+  heightOffset: 4
 --- !u!114 &330585549
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3566,14 +3562,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   lateralSpeed: 8
   lateralBound: 10
-  halfPipe: {fileID: 0}
-  groundOffset: 0.5
+  halfPipe: {fileID: 1406483155}
+  groundCheck: {fileID: 1746730990}
   groundRayLength: 8
   rotationSmoothSpeed: 15
   trackLayer:
     serializedVersion: 2
     m_Bits: 8
   jumpHeight: 4
+  spinSpeed: 360
   gravity: 100
   hangtimeThreshold: 3
   hangtimeGravityScale: 0.1
@@ -3671,7 +3668,8 @@ Transform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 1746730990}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!43 &626292285
@@ -5081,13 +5079,14 @@ MonoBehaviour:
   lateralSpeed: 5
   lateralBound: 10
   halfPipe: {fileID: 0}
-  groundOffset: 0.5
+  groundCheck: {fileID: 0}
   groundRayLength: 8
   rotationSmoothSpeed: 15
   trackLayer:
     serializedVersion: 2
     m_Bits: 8
   jumpHeight: 4
+  spinSpeed: 360
   gravity: 25
   hangtimeThreshold: 3
   hangtimeGravityScale: 0.1
@@ -5587,6 +5586,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TrackScroller
   scrollSpeed: 25
+  rotationSpeed: 3
+  splineContainer: {fileID: 2047311011}
 --- !u!43 &1498214504
 Mesh:
   m_ObjectHideFlags: 0
@@ -8011,6 +8012,37 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 888080523}
   m_SourcePrefab: {fileID: 100100000, guid: c74447f7cfa8e4df18521b365726e87c, type: 3}
+--- !u!1 &1746730989
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1746730990}
+  m_Layer: 0
+  m_Name: GroundCheck
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1746730990
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1746730989}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: -0.5, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 570279043}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!43 &1806708654
 Mesh:
   m_ObjectHideFlags: 0
