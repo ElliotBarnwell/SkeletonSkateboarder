@@ -51,27 +51,19 @@ public class HalfPipeExtruder : MonoBehaviour
 
         for (int i = 0; i <= splineSteps; i++)
         {
-            float  t   = (float)i / splineSteps;
-            float3 p   = spline.EvaluatePosition(t);
-            float3 tan = math.normalizesafe(spline.EvaluateTangent(t));
-            pos_arr[i] = new Vector3(p.x, p.y, p.z);
-            fwd_arr[i] = new Vector3(tan.x, tan.y, tan.z);
-        }
+            float  t = (float)i / splineSteps;
+            float3 p, tan, up;
+            spline.Evaluate(t, out p, out tan, out up);
 
-        right_arr[0] = Vector3.Cross(Vector3.up, fwd_arr[0]).normalized;
-        up_arr[0]    = Vector3.Cross(fwd_arr[0], right_arr[0]).normalized;
+            Vector3 fwd   = new Vector3(tan.x, tan.y, tan.z).normalized;
+            Vector3 upV   = new Vector3(up.x,  up.y,  up.z ).normalized;
+            Vector3 right = Vector3.Cross(upV, fwd).normalized;
+            upV           = Vector3.Cross(fwd, right).normalized;
 
-        for (int i = 1; i <= splineSteps; i++)
-        {
-            Vector3 axis  = Vector3.Cross(fwd_arr[i - 1], fwd_arr[i]);
-            float   angle = Vector3.SignedAngle(fwd_arr[i - 1], fwd_arr[i],
-                            axis.magnitude > 0.0001f ? axis : Vector3.up);
-            Quaternion rot = axis.magnitude > 0.0001f
-                           ? Quaternion.AngleAxis(angle, axis)
-                           : Quaternion.identity;
-
-            right_arr[i] = rot * right_arr[i - 1];
-            up_arr[i]    = Vector3.Cross(fwd_arr[i], right_arr[i]).normalized;
+            pos_arr[i]   = new Vector3(p.x, p.y, p.z);
+            fwd_arr[i]   = fwd;
+            right_arr[i] = right;
+            up_arr[i]    = upV;
         }
 
         // ── Extrude ───────────────────────────────────────────────────────

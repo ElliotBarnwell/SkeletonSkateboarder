@@ -1,139 +1,107 @@
 using UnityEngine;
+using UnityEngine.Splines;
+using Unity.Mathematics;
+using Random = UnityEngine.Random;
+using System.Collections.Generic;
 
 public class ObstacleSpawner : MonoBehaviour
 {
-    [Header("Obstacle Prefabs")]
-    public GameObject[] obstaclePrefabs;
+    [Header("Prefab")]
+    public GameObject spikePrefab;
+    public float      spikeHalfHeight = 1.5f; // half of spike height (3x3x3 spike → 1.5)
 
     [Header("Spawn Settings")]
-    public float spawnInterval = 3f;
-    public float spawnAheadZ  = 60f;
+    public int   spikeCount = 20;
+    public float startZ     = 15f;   // approximate distance along spline to start spawning
+    public float endZ       = 200f;  // approximate distance along spline to stop spawning
+    public float minSpacing = 3f;
 
-    [Header("Flat Bottom Slots")]
-    public float flatBottomWidth = 10f;  // Match to HalfPipeExtruder.flatBottomWidth
-    public float heightAbove     = 0.5f;
-    public int   maxBlockedSlots = 3;    // 1-3 — always leaves at least 1 open out of 4
+    [Header("References")]
+    public HalfPipeExtruder halfPipe;
+    public Transform        trackRoot;
 
-    [Header("Wall Slots")]
-    public bool  spawnOnWalls    = true;
-    public float wallSlotX       = 8f;    // Inner wall lane X — must be > flatBottomWidth/2
-    public float wallSlotX2      = 10f;   // Outer wall lane X — further up the curve
-    public int   wallSlotsToBlock = 1;    // 0–4 wall slots blocked per wave
-
-    [Header("Raycast")]
-    public float raycastFromY = 60f;
-    public LayerMask trackLayer;
-
-    private float     timer = 0f;
-    private Transform playerTransform;
-    private float     trackScrollSpeed;
-
-    private const int FLAT_SLOT_COUNT = 4;
-    private const int WALL_SLOT_COUNT = 4;  // inner-left, outer-left, inner-right, outer-right
+    private List<Vector3> placed = new List<Vector3>();
 
     void Start()
     {
-        GameObject player = GameObject.FindWithTag("Player");
-        if (player != null)
-            playerTransform = player.transform;
+        if (spikePrefab == null || trackRoot == null || halfPipe == null) return;
 
-        TrackScroller scroller = FindAnyObjectByType<TrackScroller>();
-        if (scroller != null)
-            trackScrollSpeed = scroller.scrollSpeed;
-    }
+        SplineContainer sc = halfPipe.splineContainer;
+        if (sc == null) return;
 
-    void Update()
-    {
-        if (playerTransform == null) return;
+        Spline spline  = sc.Spline;
+        float halfFlat = halfPipe.flatBottomWidth * 0.5f;
+        float radius   = halfPipe.radius;
 
-        timer += Time.deltaTime;
-        if (timer >= spawnInterval)
+        float splineLen = spline.GetLength();
+        float tMin      = Mathf.Clamp01(startZ / splineLen);
+        float tMax      = Mathf.Clamp01(endZ   / splineLen);
+
+        for (int i = 0; i < spikeCount; i++)
         {
-            timer = 0f;
-            SpawnPattern();
-        }
+            float t = Random.Range(tMin, tMax);
 
-        CleanupOldObstacles();
-    }
+            // Evaluate spline frame at t — matches HalfPipeExtruder's frame construction
+            float3 p3, tan3, up3;
+            spline.Evaluate(t, out p3, out tan3, out up3);
 
-    void SpawnPattern()
-    {
-        if (obstaclePrefabs.Length == 0) return;
+            Vector3 splinePos = new Vector3(p3.x, p3.y, p3.z);
+            Vector3 forward   = new Vector3(tan3.x, tan3.y, tan3.z).normalized;
 
-        float spawnZ = playerTransform.position.z + spawnAheadZ;
+            // Build right/up frame the same way HalfPipeExtruder does
+            Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
+            Vector3 up    = Vector3.Cross(forward, right).normalized;
 
-        // ── Flat bottom slots ─────────────────────────────────────────────
-        float half = flatBottomWidth * 0.5f;
-        float step = (half * 0.75f * 2f) / (FLAT_SLOT_COUNT - 1);
-        float[] flatSlotX = new float[FLAT_SLOT_COUNT]
-        {
-            -half * 0.75f,
-            -half * 0.75f + step,
-             half * 0.75f - step,
-             half * 0.75f
-        };
+            // Pick section: 0=flat bottom, 1=left wall, 2=right wall
+            int section = Random.Range(0, 3);
 
-        int   blocked   = Mathf.Clamp(maxBlockedSlots, 1, FLAT_SLOT_COUNT - 1);
-        int[] flatOrder = ShuffledIndices(FLAT_SLOT_COUNT);
-        for (int i = 0; i < blocked; i++)
-            TrySpawnAt(flatSlotX[flatOrder[i]], spawnZ);
+            Vector3 crossOffset, normal;
 
-        // ── Wall slots ────────────────────────────────────────────────────
-        if (spawnOnWalls && wallSlotsToBlock > 0)
-        {
-            float[] wallPositions = new float[WALL_SLOT_COUNT] { -wallSlotX2, -wallSlotX, wallSlotX, wallSlotX2 };
-            int     wallBlocked   = Mathf.Clamp(wallSlotsToBlock, 1, WALL_SLOT_COUNT);
-            int[]   wallOrder     = ShuffledIndices(WALL_SLOT_COUNT);
-            for (int i = 0; i < wallBlocked; i++)
-                TrySpawnAt(wallPositions[wallOrder[i]], spawnZ);
-        }
-    }
+            if (section == 0)
+            {
+                float x = Random.Range(-halfFlat, halfFlat);
+                crossOffset = right * x;
+                normal      = up;
+            }
+            else
+            {
+                float minAngle = section == 2 ? 270f : 180f;
+                float maxAngle = section == 2 ? 360f : 270f;
+                float angle    = Random.Range(minAngle, maxAngle) * Mathf.Deg2Rad;
 
-    void TrySpawnAt(float x, float z)
-    {
-        Vector3    rayOrigin = new Vector3(x, raycastFromY, z);
-        RaycastHit hit;
+                float cx = (section == 2 ? halfFlat : -halfFlat) + Mathf.Cos(angle) * radius;
+                float cy = radius + Mathf.Sin(angle) * radius;
 
-        bool foundTrack = trackLayer != 0
-            ? Physics.Raycast(rayOrigin, Vector3.down, out hit, raycastFromY * 2f, trackLayer)
-            : Physics.Raycast(rayOrigin, Vector3.down, out hit, raycastFromY * 2f);
+                crossOffset = right * cx + up * cy;
+                normal      = (-right * Mathf.Cos(angle) - up * Mathf.Sin(angle)).normalized;
+            }
 
-        if (!foundTrack) return;
+            // Surface position in SplineContainer local space, then to world, then to trackRoot local
+            Vector3 scLocalPos    = splinePos + crossOffset;
+            Vector3 worldSurface  = sc.transform.TransformPoint(scLocalPos);
+            Vector3 worldNormal   = sc.transform.TransformDirection(normal).normalized;
+            Vector3 worldSpawn    = worldSurface + worldNormal * spikeHalfHeight;
+            Vector3 localSpawn    = trackRoot.InverseTransformPoint(worldSpawn);
 
-        // Align to surface normal so spike stands perpendicular to wall/floor
-        Quaternion rot      = Quaternion.FromToRotation(Vector3.up, hit.normal);
-        Vector3    spawnPos = hit.point + hit.normal * heightAbove;
+            // Skip if too close to another spike
+            bool tooClose = false;
+            foreach (Vector3 p in placed)
+            {
+                if (Vector3.Distance(localSpawn, p) < minSpacing)
+                {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (tooClose) continue;
 
-        GameObject prefab   = obstaclePrefabs[Random.Range(0, obstaclePrefabs.Length)];
-        GameObject obstacle = Instantiate(prefab, spawnPos, rot);
+            placed.Add(localSpawn);
 
-        TrackScroller scroller = obstacle.AddComponent<TrackScroller>();
-        scroller.scrollSpeed   = trackScrollSpeed;
+            Vector3 localNormal = trackRoot.InverseTransformDirection(worldNormal).normalized;
 
-        obstacle.tag   = "Obstacle";
-        obstacle.layer = LayerMask.NameToLayer("Obstacles");
-    }
-
-    int[] ShuffledIndices(int count)
-    {
-        int[] indices = new int[count];
-        for (int i = 0; i < count; i++) indices[i] = i;
-        for (int i = count - 1; i > 0; i--)
-        {
-            int j = Random.Range(0, i + 1);
-            (indices[i], indices[j]) = (indices[j], indices[i]);
-        }
-        return indices;
-    }
-
-    void CleanupOldObstacles()
-    {
-        float destroyBehind  = playerTransform.position.z - 10f;
-        GameObject[] obstacles = GameObject.FindGameObjectsWithTag("Obstacle");
-        foreach (GameObject obs in obstacles)
-        {
-            if (obs != null && obs.transform.position.z < destroyBehind)
-                Destroy(obs);
+            GameObject spike = Instantiate(spikePrefab, trackRoot);
+            spike.transform.localPosition = localSpawn;
+            spike.transform.localRotation = Quaternion.FromToRotation(Vector3.up, localNormal);
         }
     }
 }

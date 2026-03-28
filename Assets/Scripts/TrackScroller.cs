@@ -17,7 +17,7 @@ public class TrackScroller : MonoBehaviour
     private float splineT      = 0f;
     private float splineLength = 1f;
 
-    void Start()
+    void Awake()
     {
         if (splineContainer != null)
             splineLength = splineContainer.Spline.GetLength();
