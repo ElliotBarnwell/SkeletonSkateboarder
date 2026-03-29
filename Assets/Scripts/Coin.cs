@@ -2,8 +2,9 @@ using UnityEngine;
 
 public class Coin : MonoBehaviour
 {
-    public int   pointValue      = 10;
-    public float collectRadius   = 1.5f;
+    public int   pointValue    = 10;
+    public float collectRadius = 1.5f;
+    public float spinSpeed     = 180f;
 
     private Transform player;
 
@@ -15,6 +16,8 @@ public class Coin : MonoBehaviour
 
     void Update()
     {
+        transform.Rotate(Vector3.up, spinSpeed * Time.deltaTime, Space.World);
+
         if (player == null) return;
 
         if (Vector3.Distance(transform.position, player.position) < collectRadius)
