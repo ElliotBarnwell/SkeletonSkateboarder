@@ -17,7 +17,8 @@ public class ObstacleSpawner : MonoBehaviour
     public int        coinsPerLine     = 5;
     public float      coinSpacing      = 2f;
     public float      coinHeightAbove  = 0.5f;
-    public float      coinSpikeZBuffer = 5f;   // min Z distance from any spike
+    public float      coinSpikeZBuffer  = 5f;
+    public float      coinLineZSpacing  = 15f;  // min Z distance between coin line centres
 
     [Header("Spawn Settings")]
     public float startZ     = 15f;
@@ -30,6 +31,7 @@ public class ObstacleSpawner : MonoBehaviour
 
     private readonly List<Vector3> spikePositions = new List<Vector3>();
     private readonly List<Vector3> coinPositions  = new List<Vector3>();
+    private readonly List<float>   coinLineZs     = new List<float>();
 
     void Start()
     {
@@ -48,6 +50,7 @@ public class ObstacleSpawner : MonoBehaviour
 
         spikePositions.Clear();
         coinPositions.Clear();
+        coinLineZs.Clear();
 
         Spline spline    = sc.Spline;
         float  halfFlat  = halfPipe.flatBottomWidth * 0.5f;
@@ -148,14 +151,47 @@ public class ObstacleSpawner : MonoBehaviour
                 Vector3 right   = Vector3.Cross(Vector3.up, fwd).normalized;
                 Vector3 up      = Vector3.Cross(fwd, right).normalized;
 
-                float x = Random.Range(-halfFlat * 0.75f, halfFlat * 0.75f);
+                float lineCentreZ = sc.transform.TransformPoint(linePos).z;
 
                 bool lineBlocked = false;
+
+                foreach (float lz in coinLineZs)
+                {
+                    if (Mathf.Abs(lineCentreZ - lz) < coinLineZSpacing)
+                    {
+                        lineBlocked = true;
+                        break;
+                    }
+                }
+                if (lineBlocked) continue;
+
+                // Pick section: 0 = flat bottom, 1 = left wall, 2 = right wall
+                int     section     = Random.Range(0, 3);
+                Vector3 crossOffset, coinNormal;
+
+                if (section == 0)
+                {
+                    float x = Random.Range(-halfFlat * 0.75f, halfFlat * 0.75f);
+                    crossOffset = right * x;
+                    coinNormal  = up;
+                }
+                else
+                {
+                    float baseX    = section == 2 ? halfFlat : -halfFlat;
+                    float minAngle = section == 2 ? 270f : 180f;
+                    float maxAngle = section == 2 ? 360f : 270f;
+                    float angle    = Random.Range(minAngle, maxAngle) * Mathf.Deg2Rad;
+                    float cosA     = Mathf.Cos(angle);
+                    float sinA     = Mathf.Sin(angle);
+
+                    crossOffset = right * (baseX + cosA * radius) + up * (radius + sinA * radius);
+                    coinNormal  = (-right * cosA - up * sinA).normalized;
+                }
 
                 for (int c = 0; c < coinsPerLine; c++)
                 {
                     float   zOffset  = (c - (coinsPerLine - 1) * 0.5f) * coinSpacing;
-                    Vector3 scLocal  = linePos + fwd * zOffset + right * x + up * coinHeightAbove;
+                    Vector3 scLocal  = linePos + fwd * zOffset + crossOffset + coinNormal * coinHeightAbove;
                     Vector3 worldPos = sc.transform.TransformPoint(scLocal);
                     Vector3 localPos = trackRoot.InverseTransformPoint(worldPos);
 
@@ -185,12 +221,16 @@ public class ObstacleSpawner : MonoBehaviour
 
                 if (lineBlocked) continue;
 
+                Quaternion coinRot = Quaternion.LookRotation(coinNormal, fwd);
+
+                coinLineZs.Add(lineCentreZ);
+
                 for (int c = 0; c < coinsPerLine; c++)
                 {
                     coinPositions.Add(coinLocalPositions[c]);
                     GameObject coin = Instantiate(coinPrefab, trackRoot);
                     coin.transform.localPosition = coinLocalPositions[c];
-                    coin.transform.localRotation = Quaternion.LookRotation(up, fwd);
+                    coin.transform.localRotation = coinRot;
                 }
 
                 placed = true;

@@ -2,15 +2,27 @@ using UnityEngine;
 
 public class Coin : MonoBehaviour
 {
-    public int pointValue = 10;
+    public int   pointValue      = 10;
+    public float collectRadius   = 1.5f;
 
-    void OnTriggerEnter(Collider other)
+    private Transform player;
+
+    void Start()
     {
-        if (!other.CompareTag("Player")) return;
+        GameObject p = GameObject.FindWithTag("Player");
+        if (p != null) player = p.transform;
+    }
 
-        if (GameManager.Instance != null)
-            GameManager.Instance.AddScore(pointValue);
+    void Update()
+    {
+        if (player == null) return;
 
-        Destroy(gameObject);
+        if (Vector3.Distance(transform.position, player.position) < collectRadius)
+        {
+            if (GameManager.Instance != null)
+                GameManager.Instance.AddScore(pointValue);
+
+            Destroy(gameObject);
+        }
     }
 }
