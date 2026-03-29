@@ -130,6 +130,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Coin
   pointValue: 10
   collectRadius: 1.5
+  spinSpeed: 90
 --- !u!54 &7495323105432508957
 Rigidbody:
   m_ObjectHideFlags: 0

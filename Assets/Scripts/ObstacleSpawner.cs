@@ -10,6 +10,9 @@ public class ObstacleSpawner : MonoBehaviour
     public GameObject spikePrefab;
     public float      spikeHalfHeight  = 1.5f;
     public int        spikeCount       = 20;
+    public float      spikeStartZ      = 15f;
+    public float      spikeEndZ        = 200f;
+    public float      spikeMinSpacing  = 3f;
 
     [Header("Coins")]
     public GameObject coinPrefab;
@@ -17,13 +20,10 @@ public class ObstacleSpawner : MonoBehaviour
     public int        coinsPerLine     = 5;
     public float      coinSpacing      = 2f;
     public float      coinHeightAbove  = 0.5f;
-    public float      coinSpikeZBuffer  = 5f;
-    public float      coinLineZSpacing  = 15f;  // min Z distance between coin line centres
-
-    [Header("Spawn Settings")]
-    public float startZ     = 15f;
-    public float endZ       = 200f;
-    public float minSpacing = 3f;
+    public float      coinSpikeZBuffer = 5f;
+    public float      coinLineZSpacing = 15f;
+    public float      coinStartZ       = 15f;
+    public float      coinEndZ         = 200f;
 
     [Header("References")]
     public HalfPipeExtruder halfPipe;
@@ -52,13 +52,15 @@ public class ObstacleSpawner : MonoBehaviour
         coinPositions.Clear();
         coinLineZs.Clear();
 
-        Spline spline    = sc.Spline;
-        float  halfFlat  = halfPipe.flatBottomWidth * 0.5f;
-        float  radius    = halfPipe.radius;
-        float  splineLen = spline.GetLength();
-        float  tMin      = Mathf.Clamp01(startZ / splineLen);
-        float  tMax      = Mathf.Clamp01(endZ   / splineLen);
-        float  minSqr    = minSpacing * minSpacing;
+        Spline spline      = sc.Spline;
+        float  halfFlat   = halfPipe.flatBottomWidth * 0.5f;
+        float  radius     = halfPipe.radius;
+        float  splineLen  = spline.GetLength();
+        float  spikeTMin  = Mathf.Clamp01(spikeStartZ / splineLen);
+        float  spikeTMax  = Mathf.Clamp01(spikeEndZ   / splineLen);
+        float  coinTMin   = Mathf.Clamp01(coinStartZ  / splineLen);
+        float  coinTMax   = Mathf.Clamp01(coinEndZ    / splineLen);
+        float  minSqr     = spikeMinSpacing * spikeMinSpacing;
 
         // ── Spikes ────────────────────────────────────────────────────────
         if (spikePrefab == null)
@@ -68,7 +70,7 @@ public class ObstacleSpawner : MonoBehaviour
         {
             if (spikePrefab == null) break;
 
-            float t = Random.Range(tMin, tMax);
+            float t = Random.Range(spikeTMin, spikeTMax);
 
             float3  p3  = spline.EvaluatePosition(t);
             float3  tan = math.normalizesafe(spline.EvaluateTangent(t));
@@ -142,7 +144,7 @@ public class ObstacleSpawner : MonoBehaviour
 
             for (int attempt = 0; attempt < maxAttempts; attempt++)
             {
-                float t = Random.Range(tMin, tMax);
+                float t = Random.Range(coinTMin, coinTMax);
 
                 float3  p3      = spline.EvaluatePosition(t);
                 float3  tan     = math.normalizesafe(spline.EvaluateTangent(t));
