@@ -190,7 +190,7 @@ public class ObstacleSpawner : MonoBehaviour
                     coinPositions.Add(coinLocalPositions[c]);
                     GameObject coin = Instantiate(coinPrefab, trackRoot);
                     coin.transform.localPosition = coinLocalPositions[c];
-                    coin.transform.localRotation = coinPrefab.transform.localRotation;
+                    coin.transform.localRotation = Quaternion.LookRotation(up, fwd);
                 }
 
                 placed = true;
