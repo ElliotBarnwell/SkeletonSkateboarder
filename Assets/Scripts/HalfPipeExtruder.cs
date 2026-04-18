@@ -22,9 +22,29 @@ public class HalfPipeExtruder : MonoBehaviour
     public int splineSteps   = 120;
     public int curveSegments = 4;
 
-    void Start()
+    public struct GapRange { public float startT, endT; }
+    private List<GapRange> _gapRanges = new List<GapRange>();
+
+    void Awake()
     {
+        // Build in Awake so the mesh is ready before any Start() runs,
+        // allowing ObstacleSpawner.Start() to call SetGapRanges() safely.
         BuildMesh();
+    }
+
+    /// Called by ObstacleSpawner after gap positions are determined.
+    /// Stores the ranges and rebuilds the mesh with holes cut out.
+    public void SetGapRanges(List<GapRange> ranges)
+    {
+        _gapRanges = ranges;
+        BuildMesh();
+    }
+
+    bool IsInGap(float t)
+    {
+        foreach (var gap in _gapRanges)
+            if (t >= gap.startT && t <= gap.endT) return true;
+        return false;
     }
 
     public void BuildMesh()
@@ -89,8 +109,16 @@ public class HalfPipeExtruder : MonoBehaviour
         }
 
         // ── Triangles ─────────────────────────────────────────────────────
+        // Skip any segment where either endpoint falls inside a gap range.
+        // This punches physical holes in both the visual mesh and MeshCollider,
+        // so the player's surface raycast misses and they fall through.
         for (int step = 0; step < splineSteps; step++)
         {
+            float tA = (float)step       / splineSteps;
+            float tB = (float)(step + 1) / splineSteps;
+
+            if (IsInGap(tA) || IsInGap(tB)) continue;
+
             int ringA = step       * profileCount;
             int ringB = (step + 1) * profileCount;
 

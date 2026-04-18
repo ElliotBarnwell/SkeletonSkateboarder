@@ -35,6 +35,8 @@ public class PlayerController : MonoBehaviour
     private Vector3    groundPoint        = Vector3.zero;
     private float      spinAngle          = 0f;
     private Quaternion smoothedSurfaceRot = Quaternion.identity;
+    private float      _fallVelocity      = 0f;
+    private int        _offSurfaceFrames  = 0; // grace period before falling starts
 
     public Vector3 SlopeNormal { get; private set; } = Vector3.up;
     public bool    IsGrounded  { get; private set; } = true;
@@ -123,16 +125,36 @@ public class PlayerController : MonoBehaviour
         }
 
         // ── Apply movement ────────────────────────────────────────────────
-        // Offset keeps the groundCheck point on the surface rather than the pivot
         float bottomOffset = transform.position.y - checkPoint.position.y;
 
         if (onSurface)
         {
-            pos.y = groundPoint.y + bottomOffset + jumpArcHeight;
+            pos.y             = groundPoint.y + bottomOffset + jumpArcHeight;
+            _fallVelocity     = 0f;
+            _offSurfaceFrames = 0;
+        }
+        else if (isJumping)
+        {
+            // Jumping over a gap — honour the arc, don't fall yet.
+            pos.y             = groundY + bottomOffset + jumpArcHeight;
+            _fallVelocity     = 0f;
+            _offSurfaceFrames = 0;
         }
         else
         {
-            pos.y = groundY + bottomOffset + jumpArcHeight;
+            // No surface hit and not jumping — player is over a gap.
+            // Allow a 3-frame grace period so steep curved walls don't
+            // falsely trigger a fall when the downward ray briefly misses.
+            _offSurfaceFrames++;
+            if (_offSurfaceFrames > 3)
+            {
+                _fallVelocity -= gravity * Time.deltaTime;
+                pos.y         += _fallVelocity * Time.deltaTime;
+            }
+            else
+            {
+                pos.y = groundY + bottomOffset; // hold steady during grace period
+            }
         }
 
         transform.position = pos;

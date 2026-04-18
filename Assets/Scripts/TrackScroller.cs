@@ -7,18 +7,32 @@ using Unity.Mathematics;
 // ease in gradually rather than snapping, giving the feel of moving through the pipe.
 public class TrackScroller : MonoBehaviour
 {
+    public static TrackScroller Instance { get; private set; }
+
     [Header("Scroll Settings")]
     public float scrollSpeed    = 18f;
     public float rotationSpeed  = 3f;
 
+    [Header("Speed Boost")]
+    [Tooltip("How quickly the boosted speed bleeds back to scrollSpeed (units/sec²).")]
+    public float boostDecayRate = 12f;
+
     [Header("References")]
     public SplineContainer splineContainer;
 
-    private float splineT      = 0f;
-    private float splineLength = 1f;
+    private float splineT       = 0f;
+    private float splineLength  = 1f;
+    private float _currentSpeed;
+
+    void Awake()
+    {
+        Instance = this;
+    }
 
     void Start()
     {
+        _currentSpeed = scrollSpeed;
+
         if (splineContainer != null)
             splineLength = splineContainer.Spline.GetLength();
 
@@ -28,9 +42,17 @@ public class TrackScroller : MonoBehaviour
 
     void Update()
     {
-        splineT += (scrollSpeed / splineLength) * Time.deltaTime;
+        _currentSpeed = Mathf.MoveTowards(_currentSpeed, scrollSpeed, boostDecayRate * Time.deltaTime);
+        splineT += (_currentSpeed / splineLength) * Time.deltaTime;
         AlignToGate(snap: false);
         Physics.SyncTransforms();
+    }
+
+    /// Instantly raises scroll speed by <paramref name="amount"/> above the baseline.
+    /// The excess decays back to scrollSpeed at boostDecayRate units/sec.
+    public void ApplyBoost(float amount)
+    {
+        _currentSpeed = Mathf.Max(_currentSpeed, scrollSpeed + amount);
     }
 
     void AlignToGate(bool snap)
