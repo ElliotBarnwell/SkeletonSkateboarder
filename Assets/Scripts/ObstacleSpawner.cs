@@ -25,6 +25,14 @@ public class ObstacleSpawner : MonoBehaviour
     public float      coinStartZ       = 15f;
     public float      coinEndZ         = 200f;
 
+    [Header("Walls")]
+    public GameObject wallPrefab;
+    public float      wallThickness    = 0.3f;
+    public float      wallStartZ       = 50f;
+    public float      wallEndZ         = 500f;
+    public float      wallZSpacing     = 250f;
+    public float      wallClearZBuffer = 10f;
+
     [Header("References")]
     public HalfPipeExtruder halfPipe;
     public Transform        trackRoot;
@@ -52,19 +60,20 @@ public class ObstacleSpawner : MonoBehaviour
         coinPositions.Clear();
         coinLineZs.Clear();
 
-        Spline spline      = sc.Spline;
-        float  halfFlat   = halfPipe.flatBottomWidth * 0.5f;
-        float  radius     = halfPipe.radius;
-        float  splineLen  = spline.GetLength();
-        float  spikeTMin  = Mathf.Clamp01(spikeStartZ / splineLen);
-        float  spikeTMax  = Mathf.Clamp01(spikeEndZ   / splineLen);
-        float  coinTMin   = Mathf.Clamp01(coinStartZ  / splineLen);
-        float  coinTMax   = Mathf.Clamp01(coinEndZ    / splineLen);
-        float  minSqr     = spikeMinSpacing * spikeMinSpacing;
+        Spline spline    = sc.Spline;
+        float  halfFlat  = halfPipe.flatBottomWidth * 0.5f;
+        float  radius    = halfPipe.radius;
+        float  splineLen = spline.GetLength();
+        float  minSqr    = spikeMinSpacing * spikeMinSpacing;
+
+        const int maxAttempts = 20;
 
         // ── Spikes ────────────────────────────────────────────────────────
         if (spikePrefab == null)
             Debug.LogWarning("ObstacleSpawner: spikePrefab not assigned, skipping spikes.");
+
+        float spikeTMin = Mathf.Clamp01(spikeStartZ / splineLen);
+        float spikeTMax = Mathf.Clamp01(spikeEndZ   / splineLen);
 
         for (int i = 0; i < spikeCount; i++)
         {
@@ -128,119 +137,203 @@ public class ObstacleSpawner : MonoBehaviour
 
         // ── Coins ─────────────────────────────────────────────────────────
         if (coinPrefab == null)
-        {
             Debug.LogWarning("ObstacleSpawner: coinPrefab not assigned, skipping coins.");
+
+        if (coinPrefab != null)
+        {
+            float     coinTMin           = Mathf.Clamp01(coinStartZ / splineLen);
+            float     coinTMax           = Mathf.Clamp01(coinEndZ   / splineLen);
+            float     coinMinSqr         = coinSpacing * coinSpacing;
+            Vector3[] coinLocalPositions = new Vector3[coinsPerLine];
+
+            for (int line = 0; line < coinLineCount; line++)
+            {
+                bool placed = false;
+
+                for (int attempt = 0; attempt < maxAttempts; attempt++)
+                {
+                    float t = Random.Range(coinTMin, coinTMax);
+
+                    float3  p3      = spline.EvaluatePosition(t);
+                    float3  tan     = math.normalizesafe(spline.EvaluateTangent(t));
+                    Vector3 linePos = new Vector3(p3.x, p3.y, p3.z);
+                    Vector3 fwd     = new Vector3(tan.x, tan.y, tan.z);
+                    Vector3 right   = Vector3.Cross(Vector3.up, fwd).normalized;
+                    Vector3 up      = Vector3.Cross(fwd, right).normalized;
+
+                    float lineCentreZ = sc.transform.TransformPoint(linePos).z;
+
+                    bool lineBlocked = false;
+
+                    foreach (float lz in coinLineZs)
+                    {
+                        if (Mathf.Abs(lineCentreZ - lz) < coinLineZSpacing)
+                        {
+                            lineBlocked = true;
+                            break;
+                        }
+                    }
+                    if (lineBlocked) continue;
+
+                    int     section     = Random.Range(0, 3);
+                    Vector3 crossOffset, coinNormal;
+
+                    if (section == 0)
+                    {
+                        float x = Random.Range(-halfFlat * 0.75f, halfFlat * 0.75f);
+                        crossOffset = right * x;
+                        coinNormal  = up;
+                    }
+                    else
+                    {
+                        float baseX    = section == 2 ? halfFlat : -halfFlat;
+                        float minAngle = section == 2 ? 270f : 180f;
+                        float maxAngle = section == 2 ? 360f : 270f;
+                        float angle    = Random.Range(minAngle, maxAngle) * Mathf.Deg2Rad;
+                        float cosA     = Mathf.Cos(angle);
+                        float sinA     = Mathf.Sin(angle);
+
+                        crossOffset = right * (baseX + cosA * radius) + up * (radius + sinA * radius);
+                        coinNormal  = (-right * cosA - up * sinA).normalized;
+                    }
+
+                    for (int c = 0; c < coinsPerLine; c++)
+                    {
+                        float   zOffset  = (c - (coinsPerLine - 1) * 0.5f) * coinSpacing;
+                        Vector3 scLocal  = linePos + fwd * zOffset + crossOffset + coinNormal * coinHeightAbove;
+                        Vector3 worldPos = sc.transform.TransformPoint(scLocal);
+                        Vector3 localPos = trackRoot.InverseTransformPoint(worldPos);
+
+                        foreach (Vector3 sp in spikePositions)
+                        {
+                            if (Mathf.Abs(worldPos.z - trackRoot.TransformPoint(sp).z) < coinSpikeZBuffer)
+                            {
+                                lineBlocked = true;
+                                break;
+                            }
+                        }
+                        if (lineBlocked) break;
+
+                        foreach (Vector3 cp in coinPositions)
+                        {
+                            if ((localPos - cp).sqrMagnitude < coinMinSqr)
+                            {
+                                lineBlocked = true;
+                                break;
+                            }
+                        }
+                        if (lineBlocked) break;
+
+                        coinLocalPositions[c] = localPos;
+                    }
+
+                    if (lineBlocked) continue;
+
+                    Quaternion coinRot = Quaternion.LookRotation(coinNormal, fwd);
+                    coinLineZs.Add(lineCentreZ);
+
+                    for (int c = 0; c < coinsPerLine; c++)
+                    {
+                        coinPositions.Add(coinLocalPositions[c]);
+                        GameObject coin = Instantiate(coinPrefab, trackRoot);
+                        coin.transform.localPosition = coinLocalPositions[c];
+                        coin.transform.localRotation = coinRot;
+                    }
+
+                    placed = true;
+                    break;
+                }
+
+                if (!placed)
+                    Debug.LogWarning($"ObstacleSpawner: could not place coin line {line} after {maxAttempts} attempts.");
+            }
+        }
+
+        // ── Walls ─────────────────────────────────────────────────────────
+        if (wallPrefab == null)
+        {
+            Debug.LogWarning("ObstacleSpawner: wallPrefab not assigned, skipping walls.");
             return;
         }
 
-        float     coinMinSqr         = coinSpacing * coinSpacing;
-        Vector3[] coinLocalPositions = new Vector3[coinsPerLine];
+        float wallTMin   = Mathf.Clamp01(wallStartZ / splineLen);
+        float wallTMax   = Mathf.Clamp01(wallEndZ   / splineLen);
+        int   wallCount  = Mathf.Max(1, Mathf.FloorToInt((wallEndZ - wallStartZ) / wallZSpacing));
+        float wallWidth  = halfFlat * 2f + radius * 2f;
+        float wallHeight = radius;
 
-        const int maxAttempts = 20;
+        List<float> wallZs = new List<float>();
 
-        for (int line = 0; line < coinLineCount; line++)
+        for (int w = 0; w < wallCount; w++)
         {
-            bool placed = false;
+            bool wallPlaced = false;
 
             for (int attempt = 0; attempt < maxAttempts; attempt++)
             {
-                float t = Random.Range(coinTMin, coinTMax);
+                float t = Random.Range(wallTMin, wallTMax);
 
-                float3  p3      = spline.EvaluatePosition(t);
-                float3  tan     = math.normalizesafe(spline.EvaluateTangent(t));
-                Vector3 linePos = new Vector3(p3.x, p3.y, p3.z);
-                Vector3 fwd     = new Vector3(tan.x, tan.y, tan.z);
-                Vector3 right   = Vector3.Cross(Vector3.up, fwd).normalized;
-                Vector3 up      = Vector3.Cross(fwd, right).normalized;
+                float3  p3    = spline.EvaluatePosition(t);
+                float3  tan   = math.normalizesafe(spline.EvaluateTangent(t));
+                Vector3 pos   = new Vector3(p3.x, p3.y, p3.z);
+                Vector3 fwd   = new Vector3(tan.x, tan.y, tan.z);
+                Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
+                Vector3 up    = Vector3.Cross(fwd, right).normalized;
 
-                float lineCentreZ = sc.transform.TransformPoint(linePos).z;
+                // Centre of wall in cross-section: x=0, y=radius/2
+                Vector3 worldPos = sc.transform.TransformPoint(pos + up * (wallHeight * 0.5f));
+                float   worldZ   = worldPos.z;
 
-                bool lineBlocked = false;
+                bool blocked = false;
 
-                foreach (float lz in coinLineZs)
+                foreach (float wz in wallZs)
                 {
-                    if (Mathf.Abs(lineCentreZ - lz) < coinLineZSpacing)
+                    if (Mathf.Abs(worldZ - wz) < wallZSpacing)
                     {
-                        lineBlocked = true;
+                        blocked = true;
                         break;
                     }
                 }
-                if (lineBlocked) continue;
+                if (blocked) continue;
 
-                // Pick section: 0 = flat bottom, 1 = left wall, 2 = right wall
-                int     section     = Random.Range(0, 3);
-                Vector3 crossOffset, coinNormal;
-
-                if (section == 0)
+                foreach (Vector3 sp in spikePositions)
                 {
-                    float x = Random.Range(-halfFlat * 0.75f, halfFlat * 0.75f);
-                    crossOffset = right * x;
-                    coinNormal  = up;
-                }
-                else
-                {
-                    float baseX    = section == 2 ? halfFlat : -halfFlat;
-                    float minAngle = section == 2 ? 270f : 180f;
-                    float maxAngle = section == 2 ? 360f : 270f;
-                    float angle    = Random.Range(minAngle, maxAngle) * Mathf.Deg2Rad;
-                    float cosA     = Mathf.Cos(angle);
-                    float sinA     = Mathf.Sin(angle);
-
-                    crossOffset = right * (baseX + cosA * radius) + up * (radius + sinA * radius);
-                    coinNormal  = (-right * cosA - up * sinA).normalized;
-                }
-
-                for (int c = 0; c < coinsPerLine; c++)
-                {
-                    float   zOffset  = (c - (coinsPerLine - 1) * 0.5f) * coinSpacing;
-                    Vector3 scLocal  = linePos + fwd * zOffset + crossOffset + coinNormal * coinHeightAbove;
-                    Vector3 worldPos = sc.transform.TransformPoint(scLocal);
-                    Vector3 localPos = trackRoot.InverseTransformPoint(worldPos);
-
-                    foreach (Vector3 sp in spikePositions)
+                    if (Mathf.Abs(worldZ - trackRoot.TransformPoint(sp).z) < wallClearZBuffer)
                     {
-                        Vector3 spikeWorld = trackRoot.TransformPoint(sp);
-                        if (Mathf.Abs(worldPos.z - spikeWorld.z) < coinSpikeZBuffer)
-                        {
-                            lineBlocked = true;
-                            break;
-                        }
+                        blocked = true;
+                        break;
                     }
-                    if (lineBlocked) break;
-
-                    foreach (Vector3 cp in coinPositions)
-                    {
-                        if ((localPos - cp).sqrMagnitude < coinMinSqr)
-                        {
-                            lineBlocked = true;
-                            break;
-                        }
-                    }
-                    if (lineBlocked) break;
-
-                    coinLocalPositions[c] = localPos;
                 }
+                if (blocked) continue;
 
-                if (lineBlocked) continue;
-
-                Quaternion coinRot = Quaternion.LookRotation(coinNormal, fwd);
-
-                coinLineZs.Add(lineCentreZ);
-
-                for (int c = 0; c < coinsPerLine; c++)
+                foreach (Vector3 cp in coinPositions)
                 {
-                    coinPositions.Add(coinLocalPositions[c]);
-                    GameObject coin = Instantiate(coinPrefab, trackRoot);
-                    coin.transform.localPosition = coinLocalPositions[c];
-                    coin.transform.localRotation = coinRot;
+                    if (Mathf.Abs(worldZ - trackRoot.TransformPoint(cp).z) < wallClearZBuffer)
+                    {
+                        blocked = true;
+                        break;
+                    }
                 }
+                if (blocked) continue;
 
-                placed = true;
+                wallZs.Add(worldZ);
+
+                Vector3    localPos  = trackRoot.InverseTransformPoint(worldPos);
+                Vector3    worldFwd  = sc.transform.TransformDirection(fwd).normalized;
+                Vector3    worldUp   = sc.transform.TransformDirection(up).normalized;
+                Quaternion localRot  = Quaternion.Inverse(trackRoot.rotation)
+                                     * Quaternion.LookRotation(worldFwd, worldUp);
+
+                GameObject wall = Instantiate(wallPrefab, trackRoot);
+                wall.transform.localPosition = localPos;
+                wall.transform.localRotation = localRot;
+                wall.transform.localScale    = new Vector3(wallWidth, wallHeight, wallThickness);
+
+                wallPlaced = true;
                 break;
             }
 
-            if (!placed)
-                Debug.LogWarning($"ObstacleSpawner: could not place coin line {line} after {maxAttempts} attempts.");
+            if (!wallPlaced)
+                Debug.LogWarning($"ObstacleSpawner: could not place wall {w} after {maxAttempts} attempts.");
         }
     }
 }

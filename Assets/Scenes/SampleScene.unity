@@ -2414,19 +2414,25 @@ MonoBehaviour:
   m_EditorClassIdentifier: '::'
   spikePrefab: {fileID: 6433137034337712513, guid: edf3b372f464c45f38a6a7a3237f6872, type: 3}
   spikeHalfHeight: 1.5
-  spikeCount: 100
+  spikeCount: 70
   spikeStartZ: 50
   spikeEndZ: 1000
   spikeMinSpacing: 10
   coinPrefab: {fileID: 8609207437796836561, guid: 2e4024217e9bd4811bc28296fa453780, type: 3}
-  coinLineCount: 10
+  coinLineCount: 15
   coinsPerLine: 5
   coinSpacing: 2
   coinHeightAbove: 1
   coinSpikeZBuffer: 5
   coinLineZSpacing: 50
-  coinStartZ: 15
+  coinStartZ: 50
   coinEndZ: 1000
+  wallPrefab: {fileID: 600409191148059967, guid: 598276ac19e8b4a4ca4f68f2e6f47c8a, type: 3}
+  wallThickness: 0.3
+  wallStartZ: 100
+  wallEndZ: 1000
+  wallZSpacing: 300
+  wallClearZBuffer: 10
   halfPipe: {fileID: 1406483155}
   trackRoot: {fileID: 1406483159}
 --- !u!4 &252534412
@@ -2776,7 +2782,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8d61cd60ccb234c3db8a32a549388367, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
-  lateralSpeed: 8
+  lateralSpeed: 10
   lateralBound: 10
   halfPipe: {fileID: 1406483155}
   groundCheck: {fileID: 1746730990}
