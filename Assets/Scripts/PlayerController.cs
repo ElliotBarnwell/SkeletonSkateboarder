@@ -25,8 +25,10 @@ public class PlayerController : MonoBehaviour
     public float hangtimeGravityScale  = 0.1f; // Gravity multiplier at apex (0 = freeze, 1 = no hangtime)
 
     [Header("Collision")]
-    public float collisionRadius = 0.5f;
+    public float collisionRadius  = 0.5f;
     public LayerMask obstacleLayer;
+    [Tooltip("How far below the last known ground the player must fall before dying.")]
+    public float fallDeathDepth   = 4f;
 
     private bool       isJumping          = false;
     private float      jumpVelocity       = 0f;
@@ -150,6 +152,9 @@ public class PlayerController : MonoBehaviour
             {
                 _fallVelocity -= gravity * Time.deltaTime;
                 pos.y         += _fallVelocity * Time.deltaTime;
+
+                if (pos.y < groundY - fallDeathDepth)
+                    GameManager.Instance?.TriggerGameOver();
             }
             else
             {
@@ -176,6 +181,10 @@ public class PlayerController : MonoBehaviour
         // ── Obstacle collision ────────────────────────────────────────────
         Collider[] hits = Physics.OverlapSphere(transform.position, collisionRadius, obstacleLayer);
         if (hits.Length > 0)
+        {
+            foreach (Collider col in hits)
+                Debug.Log($"[PlayerController] Collider hit: {col.name} on {col.gameObject.name} (layer: {LayerMask.LayerToName(col.gameObject.layer)})");
             GameManager.Instance?.TriggerGameOver();
+        }
     }
 }
