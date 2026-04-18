@@ -176,6 +176,6 @@ public class PlayerController : MonoBehaviour
         // ── Obstacle collision ────────────────────────────────────────────
         Collider[] hits = Physics.OverlapSphere(transform.position, collisionRadius, obstacleLayer);
         if (hits.Length > 0)
-            GameManager.Instance.TriggerGameOver();
+            GameManager.Instance?.TriggerGameOver();
     }
 }

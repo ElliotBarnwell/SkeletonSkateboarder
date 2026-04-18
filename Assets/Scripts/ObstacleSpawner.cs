@@ -61,6 +61,20 @@ public class ObstacleSpawner : MonoBehaviour
     [Tooltip("Must match the layer name used in PlayerController's Obstacle Layer mask.")]
     public string gapLayerName   = "Obstacle";
 
+    [Header("Obstacle Buffers")]
+    [Tooltip("Clear zone around each gap that spikes must avoid.")]
+    public float gapSpikeBuffer  = 8f;
+    [Tooltip("Clear zone around each gap that coins must avoid.")]
+    public float gapCoinBuffer   = 8f;
+    [Tooltip("Clear zone around each gap that walls must avoid.")]
+    public float gapWallBuffer   = 8f;
+    [Tooltip("Clear zone around each gap that speed bars must avoid.")]
+    public float gapBarBuffer    = 8f;
+    [Tooltip("Clear zone around each spike that speed bars must avoid.")]
+    public float spikeBarBuffer  = 4f;
+    [Tooltip("Clear zone around each coin line that speed bars must avoid.")]
+    public float coinBarBuffer   = 4f;
+
     [Header("References")]
     public HalfPipeExtruder halfPipe;
     public Transform        trackRoot;
@@ -68,6 +82,8 @@ public class ObstacleSpawner : MonoBehaviour
     private readonly List<Vector3> spikePositions = new List<Vector3>();
     private readonly List<Vector3> coinPositions  = new List<Vector3>();
     private readonly List<float>   coinLineZs     = new List<float>();
+    private readonly List<float>   gapZs          = new List<float>();
+    private readonly List<float>   spikeZs        = new List<float>();
 
     void Start()
     {
@@ -87,6 +103,8 @@ public class ObstacleSpawner : MonoBehaviour
         spikePositions.Clear();
         coinPositions.Clear();
         coinLineZs.Clear();
+        gapZs.Clear();
+        spikeZs.Clear();
 
         Spline spline    = sc.Spline;
         float  halfFlat  = halfPipe.flatBottomWidth * 0.5f;
@@ -95,6 +113,10 @@ public class ObstacleSpawner : MonoBehaviour
         float  minSqr    = spikeMinSpacing * spikeMinSpacing;
 
         const int maxAttempts = 20;
+
+        // ── Gaps (highest priority — spawned first) ───────────────────────
+        if (spawnGaps)
+            SpawnGaps(sc, spline, splineLen, halfFlat, radius);
 
         // ── Spikes ────────────────────────────────────────────────────────
         if (spawnSpikes)
@@ -146,17 +168,29 @@ public class ObstacleSpawner : MonoBehaviour
                 Vector3 localSpawn   = trackRoot.InverseTransformPoint(worldSurface + worldNormal * spikeHalfHeight);
 
                 bool tooClose = false;
-                foreach (Vector3 p in spikePositions)
+                foreach (float gz in gapZs)
                 {
-                    if ((localSpawn - p).sqrMagnitude < minSqr)
+                    if (Mathf.Abs(worldSurface.z - gz) < gapSpikeBuffer)
                     {
                         tooClose = true;
                         break;
                     }
                 }
+                if (!tooClose)
+                {
+                    foreach (Vector3 p in spikePositions)
+                    {
+                        if ((localSpawn - p).sqrMagnitude < minSqr)
+                        {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                }
                 if (tooClose) continue;
 
                 spikePositions.Add(localSpawn);
+                spikeZs.Add(worldSurface.z);
 
                 Vector3 localNormal = trackRoot.InverseTransformDirection(worldNormal).normalized;
 
@@ -196,6 +230,16 @@ public class ObstacleSpawner : MonoBehaviour
                     foreach (float lz in coinLineZs)
                     {
                         if (Mathf.Abs(lineCentreZ - lz) < coinLineZSpacing)
+                        {
+                            lineBlocked = true;
+                            break;
+                        }
+                    }
+                    if (lineBlocked) continue;
+
+                    foreach (float gz in gapZs)
+                    {
+                        if (Mathf.Abs(lineCentreZ - gz) < gapCoinBuffer)
                         {
                             lineBlocked = true;
                             break;
@@ -348,6 +392,16 @@ public class ObstacleSpawner : MonoBehaviour
                         }
                         if (blocked) continue;
 
+                        foreach (float gz in gapZs)
+                        {
+                            if (Mathf.Abs(worldZ - gz) < gapWallBuffer)
+                            {
+                                blocked = true;
+                                break;
+                            }
+                        }
+                        if (blocked) continue;
+
                         wallZs.Add(worldZ);
 
                         Vector3    localPos  = trackRoot.InverseTransformPoint(worldPos);
@@ -374,10 +428,6 @@ public class ObstacleSpawner : MonoBehaviour
         // ── Speed Bars ────────────────────────────────────────────────────
         if (spawnBars)
             SpawnSpeedBars(sc, spline, splineLen, halfFlat, radius);
-
-        // ── Gaps ──────────────────────────────────────────────────────────
-        if (spawnGaps)
-            SpawnGaps(sc, spline, splineLen, halfFlat, radius);
     }
 
     void SpawnGaps(SplineContainer sc, Spline spline, float splineLen, float halfFlat, float radius)
@@ -432,6 +482,7 @@ public class ObstacleSpawner : MonoBehaviour
                 Vector3 localPos = trackRoot.InverseTransformPoint(worldPos);
 
                 placedZs.Add(worldPos.z);
+                gapZs.Add(worldPos.z);
                 gapRanges.Add(new HalfPipeExtruder.GapRange {
                     startT = Mathf.Clamp01(t - halfGapT),
                     endT   = Mathf.Clamp01(t + halfGapT)
@@ -448,7 +499,7 @@ public class ObstacleSpawner : MonoBehaviour
                 // player can ride the walls safely and must jump on the floor.
                 GameObject killZone = new GameObject("GapKillZone");
                 killZone.transform.SetParent(gap.transform, worldPositionStays: false);
-                killZone.transform.localPosition = new Vector3(0f, 0.25f, 0f);
+                killZone.transform.localPosition = new Vector3(0f, -(radius + 1f), 0f);
                 killZone.layer = gapLayer;
                 killZone.AddComponent<Obstacle>();
                 BoxCollider bc = killZone.AddComponent<BoxCollider>();
@@ -492,6 +543,24 @@ public class ObstacleSpawner : MonoBehaviour
                     {
                         tooClose = true;
                         break;
+                    }
+                }
+                foreach (float gz in gapZs)
+                {
+                    if (Mathf.Abs(targetZ - gz) < gapBarBuffer) { tooClose = true; break; }
+                }
+                if (!tooClose)
+                {
+                    foreach (float sz in spikeZs)
+                    {
+                        if (Mathf.Abs(targetZ - sz) < spikeBarBuffer) { tooClose = true; break; }
+                    }
+                }
+                if (!tooClose)
+                {
+                    foreach (float cz in coinLineZs)
+                    {
+                        if (Mathf.Abs(targetZ - cz) < coinBarBuffer) { tooClose = true; break; }
                     }
                 }
                 if (tooClose) continue;
