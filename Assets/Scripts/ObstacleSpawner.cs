@@ -58,9 +58,6 @@ public class ObstacleSpawner : MonoBehaviour
     public float  gapStartZ      = 20f;
     public float  gapEndZ        = 200f;
     public float  gapMinSpacing  = 20f;
-    public float  gapLineWidth   = 0.15f;
-    [Tooltip("Orange-red so gaps read differently from white speed bars.")]
-    public Color  gapEdgeColor   = new Color(1f, 0.3f, 0.1f, 0.9f);
     [Tooltip("Must match the layer name used in PlayerController's Obstacle Layer mask.")]
     public string gapLayerName   = "Obstacle";
 
@@ -394,9 +391,6 @@ public class ObstacleSpawner : MonoBehaviour
             gapLayer = 0;
         }
 
-        Material  mat     = ResolveBarMaterial();
-        Vector3[] profile = BuildBarProfile(halfFlat, radius, halfPipe.curveSegments);
-
         float      gapTMin  = Mathf.Clamp01(gapStartZ / splineLen);
         float      gapTMax  = Mathf.Clamp01(gapEndZ   / splineLen);
         List<float>                    placedZs  = new List<float>();
@@ -448,30 +442,6 @@ public class ObstacleSpawner : MonoBehaviour
                 gap.transform.SetParent(trackRoot, worldPositionStays: false);
                 gap.transform.localPosition = localPos;
                 gap.transform.localRotation = Quaternion.LookRotation(localFwd, localUp);
-
-                // ── Two edge bars (entry + exit) ──────────────────────────
-                // Same LineRenderer approach as speed bars, offset ±gapLength/2
-                // along local Z so they sit at the lips of the gap.
-                foreach (float edgeZ in new[] { -gapLength * 0.5f, gapLength * 0.5f })
-                {
-                    GameObject edge = new GameObject("GapEdge");
-                    edge.transform.SetParent(gap.transform, worldPositionStays: false);
-                    edge.transform.localPosition = new Vector3(0f, 0f, edgeZ);
-                    edge.transform.localRotation = Quaternion.identity;
-
-                    LineRenderer lr      = edge.AddComponent<LineRenderer>();
-                    lr.useWorldSpace     = false;
-                    lr.positionCount     = profile.Length;
-                    lr.SetPositions(profile);
-                    lr.startWidth        = gapLineWidth;
-                    lr.endWidth          = gapLineWidth;
-                    lr.startColor        = gapEdgeColor;
-                    lr.endColor          = gapEdgeColor;
-                    lr.loop              = false;
-                    lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                    lr.receiveShadows    = false;
-                    lr.sharedMaterial    = mat;
-                }
 
                 // ── Kill zone collider across the flat bottom ─────────────
                 // Spans only the flat section (not the curved walls) so the
